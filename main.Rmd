@@ -1,0 +1,98 @@
+---
+html_document:
+  depth: 2
+  highlight: tango
+  number_sections: no
+  toc: yes
+  toc_float: yes
+---
+
+# Wearable Computing: Applying Machine Learning Algorithims to Predict Weight Lifting Errors
+## Authour: Connor Gaspar
+### Date: April 27, 2017
+
+```{r setup, echo=FALSE}
+require(knitr)
+```
+
+```{r initialize}
+require(knitr); require(caret); require(ggplot2); require(rattle); require(ranger); require(e1071)
+trainingLink <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testingLink <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+training <- read.csv(trainingLink, na.strings=c("NA", "#DIV/0!", ""))
+testing <- read.csv(testingLink, na.strings=c("NA", "#DIV/0!", ""))
+```
+
+## Executive Summary
+
+The following analysis utilises the *Weight Lifting Excercises* (WLE) data set graciously provided by Velloso et. al. (2013). In this data set, participants activity was recorded while performing weight lifting excercises. In this project, the provided data will be used to train and select an appropriate machine learning algorithim that will predict the manner in which participants performed the exercises. To this end, a training, testing, and cross-validation data set were generated from the WLE data to test various models and predictions while mitigating overfitting of the data. An example of the present data set is shown below:
+
+```{r}
+kable(head(training[,1:5, 156:160]),
+      caption = "Sample of the Training Data", align = "c", digits = 5)
+```
+
+## Model Building
+
+Of the complete data set, only variables containing raw physical data were used. This meant that a total of 29 predictor variables being considered in the determination of a final model. The variables which were excluded from this analysis were either participant identifier or summary statistics. 
+
+```{r Model-Setup}
+vars <- names(training[c(8:11, 37:49, 60:68, 84:86)]) # Selecting variables of interest
+mlFormula <- as.formula(paste("classe ~", paste(vars, collapse="+"))) # Generating a formula object
+```
+
+## Cross-Validation
+
+Cross-validation was performed via the ``train`` function of the ``caret`` package and k-fold cross-validation with `k = 10`. As aforementioned, this was done to test the validity of model fitting independent of the testing data set. 
+
+```{r Train-Control-Setup}
+train_control <- trainControl(method="cv", number=10) # Establishing an object to conduct cross-validation
+```
+
+
+```{r Linear-Discriminant-Analysis}
+ldaTrain <- train(mlFormula, data=training, trControl=train_control, method="lda") # LDA Training
+
+ldaPredict <- predict(ldaTrain, testing)
+```
+
+```{r Classification-and-Regression-Tree-Analysis}
+rpartTrain <- train(mlFormula, data=training, trControl=train_control, method="rpart") # CART Training
+
+rpartPredict <- predict(rpartTrain, testing)
+
+fancyRpartPlot(rpartTrain$finalModel, main="Decision Tree of classe Variable", sub="")
+```
+
+```{r Random-Forest-Analysis}
+rfTrain <- train(x=training[,c(8:11, 37:49, 60:68, 84:86)], # Random Forest (ranger) Training
+                 y=training[,160],
+                 trControl=train_control,
+                 method="ranger",
+                 verbose=F)
+
+rfPredict <- predict(rfTrain, testing)
+```
+
+```{r Comparison-of-Accuracy-in-CrossValidated-Testing}
+kable(data.frame("Linear Discriminant Analysis"=paste0(round(ldaTrain$results$Accuracy*100, 0), "%"),
+                 "CART Analysis"=paste0(round(max(rpartTrain$results$Accuracy)*100, 0), "%"),
+                 "Random Forest Analysis"=paste0(round(max(rfTrain$results$Accuracy)*100, 0), "%")),
+      align="c", 
+      caption = "Comparison Methods in Accuracy in Cross-Validation")
+```
+
+## Discussion
+
+In consideration of the difference in cross-validation accuracies across different predictive methods, the random forest analysis is by far the superior prediction model at 99% accuracy. Further, the **out-of-bag (OOB)/out-of-sample error rate** of ``r round(rfTrain$finalModel$prediction.error, 2)*100`` demonstrates a high resample validiy rate. Therefore in determining the final model to proceed with, the random forest model was chosen.
+
+## Conclusions
+
+Based on the selection of a final model, the following predictions were made of the testing set:
+
+``r rfPredict``
+
+## Sources
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
